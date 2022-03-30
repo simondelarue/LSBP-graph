@@ -66,7 +66,7 @@ def main():
     ext = 'txt'   
 
     # Preprocess data (if needed)
-    print('---------------------')
+    """print('---------------------')
     print('Preprocessing')
     print('---------------------')
 
@@ -135,7 +135,7 @@ def main():
         output.write(f'Top 10 project: {np.argsort(-scores)[:10]}\n')
         for i in top10_idx:
             print(keys[np.where(values==i)[0]][0], scores[i])
-            output.write(f'{keys[np.where(values==i)[0]][0]} {scores[i]}\n')
+            output.write(f'{keys[np.where(values==i)[0]][0]} {scores[i]}\n')"""
 
 
 
@@ -160,7 +160,7 @@ def main():
     if 'toy' in filename:
         batch_size = int(1 * m)
     else:
-        batch_size = int(1 * m)
+        batch_size = int(0.5 * m)
     labels = {} # dictionary swhid: idx
 
     scores_batches = []
@@ -203,7 +203,6 @@ def main():
 
             for idx, batch in tqdm(enumerate(batches)):
                 #print('-------------- \nBatch ', idx)
-                #print('\ninit scores: ', scores)
 
                 # Adjacency matrix
                 #max_idx = max(np.max(batch['src'].array), np.max(batch['dst'].array)) + 1
@@ -215,13 +214,7 @@ def main():
                     rows = batch['src'].array
                     cols = batch['dst'].array
                     data = np.ones(len(batch['src']))
-                #adjacency = sparse.coo_matrix((data, (rows, cols)), shape=(max_idx, max_idx))
                 adjacency = sparse.coo_matrix((data, (rows, cols)), shape=(n, n))
-                prod = adjacency.dot(np.ones(adjacency.shape[1]))
-                max = np.max(prod)
-                print('\nMAX DOT PRODUCT: ', max)
-                print('ROW MAX DOT PRODUCT: ', np.where(prod==max))
-                #print('adjacency: ', adjacency.shape, adjacency.nnz)
                 
                 # Matrices
                 #W = (0.85 * diag.tocsr()[:max_idx, :max_idx].dot(adjacency)).T.tocoo()
@@ -230,19 +223,9 @@ def main():
 
                 # SpMV multiplication
                 scores_ = W.dot(scores) + v0 #+ np.ones(len(scores))/len(scores)
-                print(f'\nSCORE after SpMv: {np.max(scores_)} - {np.argsort(-scores_)[0]} \n')
-                #print('scores updated: ', scores_)
                 scores_ /= scores_.sum()
-                #print('scores updated after norm: ', scores_)
                 #init_scores = np.vstack([init_scores, scores_]) # mimic the case of a parallel scenario
                 init_scores += scores + scores_ # mimic the case of a sequential scenario
-                
-                print(f'Top 10 project: {np.argsort(-scores_)[:10]}')
-                top10_idx = np.argsort(-scores_)[:10]
-                keys = np.array(list(reindex.keys()))
-                values = np.array(list(reindex.values()))
-                for i in top10_idx:
-                    print(keys[np.where(values==i)[0]][0], scores_[i])
 
                 #print('new init scores: ', init_scores)
                 #print('scores_: ', scores_)
