@@ -189,7 +189,7 @@ def main():
     print('Load edges reindexed...')
     edges = pd.read_csv(f'{data_dir}/{filename}.csv', names=['src', 'dst'], delimiter=',')
 
-    batch_sizes = [int(1*m), int(0.5*m), int(0.1*m), int(0.05), int(0.01*m), int(0.005*m)]
+    batch_sizes = [int(1*m), int(0.5*m), int(0.1*m), int(0.05*m), int(0.01*m), int(0.005*m)]
     times_vect_prod = []
 
     for batch_size in batch_sizes:
@@ -351,17 +351,6 @@ def main():
 
     # saving the dataframe
     res_df.to_csv('output/running_times.csv')
-
-    fig, ax = plt.subplots(1, 1, figsize=(12, 7))
-    plt.plot(res_df[res_df['method']=='SpMV']['nb_batch'].array, res_df[res_df['method']=='SpMV']['avg_time_iter'].array, label='SpMV', marker='o')
-    plt.plot(res_df[res_df['method']=='SpMV']['nb_batch'].array, [res_df[res_df['method']=='skn']['avg_time_iter'].values]*len(batch_sizes), label='skn', marker='o')
-    plt.xlabel('# batches')
-    plt.ylabel('Avg time per it (s)')
-    plt.legend()
-    plt.title('Avg time per it: processing data + PageRank', weight='bold')
-    plt.savefig('output/img/running_times')
-    #plt.show()
-
 
 # Line profiler
 lprofiler = LineProfiler()
