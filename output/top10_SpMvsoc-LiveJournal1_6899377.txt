@@ -1,8 +1,8 @@
-Completed   1/5 iterations. 8.25800 seconds elapsed.
-Completed   2/5 iterations. 8.22129 seconds elapsed.
-Completed   3/5 iterations. 8.25055 seconds elapsed.
-Completed   4/5 iterations. 8.21420 seconds elapsed.
-Completed   5/5 iterations. 8.22192 seconds elapsed.
+Completed   1/5 iterations. 8.36374 seconds elapsed.
+Completed   2/5 iterations. 8.41140 seconds elapsed.
+Completed   3/5 iterations. 8.28281 seconds elapsed.
+Completed   4/5 iterations. 8.35580 seconds elapsed.
+Completed   5/5 iterations. 8.26317 seconds elapsed.
 Top 10 project: [ 327608   49559    4362   49566    1935  237523    1973  242622 2668156
     4692]
 10009 0.00013822895644493292
