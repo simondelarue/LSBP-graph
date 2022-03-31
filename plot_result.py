@@ -23,15 +23,17 @@ if __name__=='__main__':
     fig, ax = plt.subplots(1, 1, figsize=(12, 7))
     X = res_df[res_df['method']=='SpMV']['nb_batch'].array
     plt.plot(X, res_df[res_df['method']=='SpMV']['avg_time_iter'].array, label='SpMV', marker='o')
-    plt.plot(X, [res_df[res_df['method']=='skn']['avg_time_iter'].values]*len(X), label='skn', marker='o')
+    plt.plot(X, [res_df[res_df['method']=='skn']['avg_time_iter'].values * 10]*len(X), label='skn', marker='o')
+    plt.plot(X, res_df[res_df['method']=='Seq']['avg_time_iter'].array, label='seq', marker='o')
     plt.xlabel('# batches')
     plt.ylabel('Avg time per it (s)')
+    plt.yscale('log')
     plt.legend()
     plt.title('Avg time per it: processing data + PageRank', weight='bold')
     plt.savefig(f'{RES_DIR}/img/running_times')
 
     # Top10 compared to sknetwork
-    scores = []
+    scores_seq, scores_spmv = [], []
 
     fig, ax = plt.subplots(1, 1, figsize=(12, 7))
     X = res_df[res_df['method']=='SpMV']['nb_batch'].array
@@ -40,9 +42,15 @@ if __name__=='__main__':
         vals = row['top10'][1:-1].split()
         top10 = set(vals)
         ratio = len(top10.intersection(y_true)) / len(y_true)
-        scores.append(ratio)
+        scores_spmv.append(ratio)
+    for idx, row in res_df[res_df['method']=='Seq'].iterrows():
+        vals = row['top10'][1:-1].split()
+        top10 = set(vals)
+        ratio = len(top10.intersection(y_true)) / len(y_true)
+        scores_seq.append(ratio)
 
-    plt.plot(X, scores, label='HIT ratio', marker='o')
+    plt.plot(X, scores_spmv, label='SpMV', marker='o')
+    plt.plot(X, scores_seq, label='Seq', marker='o')
     plt.xlabel('# batches')
     plt.ylabel('HIT ratio')
     plt.legend()
