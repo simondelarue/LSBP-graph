@@ -119,3 +119,50 @@ if __name__=='__main__':
         print(f'Minimal node: ({min_node}, {min_node_deg})')
         print(f'Temp m {m_tmp}')
         print(f'Total in degree: {np.sum([len(v) for v in top.values()])}\n')
+
+    # SHUFFLE DataFrame
+    print('================================================')
+    edges = edges.sample(frac=1)
+
+    m = 6
+    m_tmp = 0
+    min_node_deg = 1e9 # initial value for minimum node degree in top dict
+    scnd_min_node_deg = 1e9 # initial value for second minimum node degree in top dict
+    in_degrees = {} # key=node, value=in_deg
+    top = defaultdict(list) #key=node, value=list of (source) nodes
+
+    for idx, e in edges.iterrows():
+        s, d = get_nodes(e)
+        
+        in_degrees[d] = in_degrees.get(d, 0) + 1 # count node in-degrees
+        in_degrees[s] = in_degrees.get(s, 0)
+        top[d] = top.get(d, []) + [s] # add destination node and its source
+        top[s] = top.get(s, []) + [] # add source node 
+        m_tmp += 1
+        print(f'Incoming node: ({s}->{d})')
+
+        # if we add a node in top, with a degree lower than previous nodes, we track this node as the minimal node in the dict
+        # if we exceed the max number of nodes in the 'top' dict, this min node will be poped out
+        if len(top[d]) < min_node_deg:
+            min_node = d
+            min_node_deg = len(top[d])
+        
+        # a optimiser
+        # Pour chaque noeud dans topk, on calcule le nombre de voisin et on garde le minimum
+        dic = sorted(top.items(), key=lambda x: len(x[1]))[0]
+        min_node = dic[0]
+        min_node_deg = len(dic[1])
+
+        # Size of 'top' dict exceeds m -> we need to pop out a node
+        if m_tmp > m:
+            m_tmp -= len(top.get(min_node)) + 1 # + 1 refers to the removal of minimal node linked to detination node
+            print(f'POPPED OUT minimal node: {min_node} (with indegree={len(top.get(min_node))})')
+            top.get(d).pop() # remove minimal node linked to destination node
+            top.pop(min_node)
+            
+            
+        print(f'In-degrees: {in_degrees}')
+        print(top)
+        print(f'Minimal node: ({min_node}, {min_node_deg})')
+        print(f'Temp m {m_tmp}')
+        print(f'Total in degree: {np.sum([len(v) for v in top.values()])}\n')
