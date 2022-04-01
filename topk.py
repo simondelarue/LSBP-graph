@@ -29,7 +29,8 @@ if __name__=='__main__':
 
     print('Load edges...')
     if TOY:
-        filename = 'soc-LiveJournal1_toy_bis' 
+        #filename = 'soc-LiveJournal1_toy_bis' 
+        filename = 'topk_toy'
         edges = pd.read_csv(f'{DATA_DIR}/{filename}.txt', names=['src', 'dst'], skiprows=1, delimiter=',')
     else:
         filename = 'soc-LiveJournal1'
@@ -87,6 +88,7 @@ if __name__=='__main__':
         s, d = get_nodes(e)
         
         in_degrees[d] = in_degrees.get(d, 0) + 1 # count node in-degrees
+        in_degrees[s] = in_degrees.get(s, 0)
         top[d] = top.get(d, []) + [s] # add destination node and its source
         top[s] = top.get(s, []) + [] # add source node 
         m_tmp += 1
@@ -106,7 +108,7 @@ if __name__=='__main__':
 
         # Size of 'top' dict exceeds m -> we need to pop out a node
         if m_tmp > m:
-            m_tmp -= len(top.get(min_node))
+            m_tmp -= len(top.get(min_node)) + 1 # + 1 refers to the removal of minimal node linked to detination node
             print(f'POPPED OUT minimal node: {min_node} (with indegree={len(top.get(min_node))})')
             top.get(d).pop() # remove minimal node linked to destination node
             top.pop(min_node)
@@ -115,4 +117,5 @@ if __name__=='__main__':
         print(f'In-degrees: {in_degrees}')
         print(top)
         print(f'Minimal node: ({min_node}, {min_node_deg})')
-        print(f'Temp m {m_tmp}\n')
+        print(f'Temp m {m_tmp}')
+        print(f'Total in degree: {np.sum([len(v) for v in top.values()])}\n')
