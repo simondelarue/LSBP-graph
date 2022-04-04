@@ -77,7 +77,7 @@ if __name__=='__main__':
         print(f'Minimal node: ({min_node}, {min_node_deg})')
         print(f'Temp m {m_tmp}\n')"""
 
-    m = 6
+    """m = 6
     m_tmp = 0
     min_node_deg = 1e9 # initial value for minimum node degree in top dict
     scnd_min_node_deg = 1e9 # initial value for second minimum node degree in top dict
@@ -119,6 +119,11 @@ if __name__=='__main__':
         print(f'Minimal node: ({min_node}, {min_node_deg})')
         print(f'Temp m {m_tmp}')
         print(f'Total in degree: {np.sum([len(v) for v in top.values()])}\n')
+
+    with open('output/topk/topk_subgraph.txt', 'w') as o:
+        for k, v in top.items():
+            for val in v:
+                o.write(f'{val},{k}\n')
 
     # SHUFFLE DataFrame
     print('================================================')
@@ -166,3 +171,56 @@ if __name__=='__main__':
         print(f'Minimal node: ({min_node}, {min_node_deg})')
         print(f'Temp m {m_tmp}')
         print(f'Total in degree: {np.sum([len(v) for v in top.values()])}\n')
+
+    with open('output/topk/topk_subgraph_shuff.txt', 'w') as o:
+        for k, v in top.items():
+            for val in v:
+                o.write(f'{val},{k}\n')"""
+
+
+    # New version
+    print('================================================')
+    edges = edges.sample(frac=1)
+
+    m = 2
+    m_tmp = 0
+    min_node_deg = 1e9 # initial value for minimum node degree in top dict
+    scnd_min_node_deg = 1e9 # initial value for second minimum node degree in top dict
+    in_degrees = {} # key=node, value=in_deg
+    top = defaultdict(list) #key=node, value=list of (source) nodes
+    in_degrees_top = defaultdict(set)
+    topk = set()
+
+    for idx, e in edges.iterrows():
+        s, d = get_nodes(e)
+        print(f'Node: {s}->{d}')
+        
+        in_degrees[d] = in_degrees.get(d, 0) + 1 # count node in-degrees
+        
+        # Keep track of all edges
+        in_degrees_top[d] |= set({s})
+
+        if in_degrees[d] >= m:
+            topk.add(d)
+            if s in topk:
+                top[d] = top.get(d, []) + [s] # add destination node and its source
+                print(f'HISTORIC: {in_degrees_top.get(s)}')
+                #top[s] = top.get(s, []) + list(in_degrees_top.get(s).intersection({d}))
+                top[s] = top.get(s, []) + list(in_degrees_top.get(s).intersection(topk))
+                # Clear values in historic dict in order to reduce computation time at next iteration
+                in_degrees_top[d].remove(s)
+                in_degrees_top[s] -= topk
+
+        print(f'In-degrees: {in_degrees}')
+        print(f'In-degrees TOP: {in_degrees_top}')
+        print(f'RESULT : {top}')
+        #print(top)
+        #print(f'Minimal node: ({min_node}, {min_node_deg})')
+        #print(f'Temp m {m_tmp}')
+        #print(f'Total in degree: {np.sum([len(v) for v in top.values()])}\n')
+        print(f'TOPK: {topk}\n')
+
+    with open('output/topk/topk_subgraph_new.txt', 'w') as o:
+        for k, v in top.items():
+            for val in v:
+                o.write(f'{val},{k}\n')
