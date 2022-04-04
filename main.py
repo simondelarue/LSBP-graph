@@ -16,7 +16,14 @@ if __name__=='__main__':
     print(os.path.expanduser(f'~/{sid}'))
     print(sid)
 
+    # What it does under the hood:
+    # - preprocess, i.e divide data into chunks of edges
+    # - compute PageRank on each chunk
     pr = PageRank(f'{DATA_DIR}/soc-LiveJournal1_toy_bis.txt')
+    raise Exception('END')
+    scores = pr.fit_transform()
+
+    
     print(pr)
 
     """class FileDataset(Dataset):

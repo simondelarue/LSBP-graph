@@ -19,6 +19,20 @@ def get_project_root() -> Path:
 
     return Path(__file__).parent.parent.parent
 
+
+def listdir_fullpath(directory: str) -> list:
+    ''' Returns list of complete path for each files in directory.
+        
+        Parameters:
+            directory: str
+                Name of directory to list.
+                
+        Output
+        ------
+            List of Paths. '''
+    return [os.path.join(directory, f) for f in os.listdir(directory)]
+
+
 def split_data(filename: str, max_nb_lines: int = 0) -> bool:
     ''' Split data file into chunks of equal size. Data file is split in chunks along rows.
     

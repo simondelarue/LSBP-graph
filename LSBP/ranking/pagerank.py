@@ -13,9 +13,11 @@ from scipy import sparse
 from scipy.sparse.coo import coo_matrix
 from itertools import islice
 import os
+from multiprocessing import Pool
+import collections, functools, operator
 
 from LSBP.ranking.base import BaseRanking
-from LSBP.data import get_project_root, split_data
+from LSBP.data import get_project_root, split_data, listdir_fullpath
 
 
 class PageRank(BaseRanking):
@@ -28,23 +30,51 @@ class PageRank(BaseRanking):
         self.tol = tol
         self.filename = filename
         self.cache = False
-        self.outdir = self.preprocess()
+        self.outdir = self._preprocess()
 
         self.bipartite = None
         self.adjacency = None
         self.out_degrees = None
 
-    def preprocess(self):
+    def count_neighbors(self, file):
+        neighbs = {}
+
+        with open(file) as f:
+            for line in f:
+                vals = line.strip('\n').split(',')
+                if vals[0] != '' and vals[0] != 'Source':
+                    src, dst = vals[0], vals[1]
+                    neighbs[src] = neighbs.get(src, 0) + 1
+                    neighbs[dst] = neighbs.get(dst, 0) + 1
+
+        return neighbs
+
+    def _preprocess(self):
         ''' Split input data into equally-sized batches of edges. '''
 
+        # Split data into chunks
         if not self.cache:
             self.outdir = split_data(self.filename)
             self.cache = True
         else:
             print('Use cached data')
 
+        # Count neighbors (parallel computing)
+        files = listdir_fullpath(self.outdir)
+        with Pool() as p:
+            dicts = p.map(self.count_neighbors, files)
 
-    def fit(self, input_matrix: sparse.coo_matrix, init_scores: np.ndarray = None):
+        neighbs = dict(functools.reduce(
+                            operator.add, 
+                            map(collections.Counter, dicts)
+                            ))
+        
+        # Reindex
+        
+
+
+
+    def fit(self, init_scores: np.ndarray = None):
 
         # Format
         n_row, n_col = input_matrix.shape
