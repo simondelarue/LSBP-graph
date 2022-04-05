@@ -17,7 +17,8 @@ from multiprocessing import Pool
 import collections, functools, operator
 
 from LSBP.ranking.base import BaseRanking
-from LSBP.data import get_project_root, split_data, listdir_fullpath
+from LSBP.data import get_project_root, split_data, listdir_fullpath, count_degree
+from LSBP.utils import Bunch
 
 
 class PageRank(BaseRanking):
@@ -36,42 +37,46 @@ class PageRank(BaseRanking):
         self.adjacency = None
         self.out_degrees = None
 
-    def count_neighbors(self, file):
-        neighbs = {}
-
-        with open(file) as f:
-            for line in f:
-                vals = line.strip('\n').split(',')
-                if vals[0] != '' and vals[0] != 'Source':
-                    src, dst = vals[0], vals[1]
-                    neighbs[src] = neighbs.get(src, 0) + 1
-                    neighbs[dst] = neighbs.get(dst, 0) + 1
-
-        return neighbs
 
     def _preprocess(self):
         ''' Split input data into equally-sized batches of edges. '''
 
+        self.graph = Bunch()
+
         # Split data into chunks
         if not self.cache:
-            self.outdir = split_data(self.filename)
+            self.graph.outdir = split_data(self.filename)
             self.cache = True
         else:
             print('Use cached data')
 
         # Count neighbors (parallel computing)
-        files = listdir_fullpath(self.outdir)
+        files = listdir_fullpath(self.graph.outdir)
         with Pool() as p:
-            dicts = p.map(self.count_neighbors, files)
+            #in_deg_list, out_deg_list, nb_rows_list = p.map(count_degree, files)
+            tuples = p.map(count_degree, files)
 
-        neighbs = dict(functools.reduce(
+        self.graph.nb_edges = np.sum(x[2] for x in tuples)
+
+        in_degrees = dict(functools.reduce(
                             operator.add, 
-                            map(collections.Counter, dicts)
+                            map(collections.Counter, [x[0] for x in tuples])
+                            ))
+        out_degrees = dict(functools.reduce(
+                            operator.add, 
+                            map(collections.Counter, [x[1] for x in tuples])
                             ))
         
-        # Reindex
-        
+        nodes = np.array(list(set(in_degrees.keys()).union(set(out_degrees.keys()))))
 
+        # Reindex
+        self.graph.label2idx = {}
+        self.graph.idx2label = {}
+        for idx, k in enumerate(nodes):
+            self.graph.label2idx[k] = idx
+            self.graph.idx2label[idx] = k
+        
+        self.graph.nb_nodes = len(nodes)
 
 
     def fit(self, init_scores: np.ndarray = None):
