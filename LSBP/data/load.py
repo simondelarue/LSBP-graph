@@ -8,6 +8,7 @@ Created on April 2021
 
 import os
 from os import makedirs
+from typing import Tuple
 from pathlib import Path
 
 def get_project_root() -> Path:
@@ -59,4 +60,30 @@ def split_data(filename: str, max_nb_lines: int = 0) -> bool:
         return outdir
     else:
         print(f'ERROR: No such file: {filename}')
+
+def count_degree(filename: str) -> Tuple[dict, dict, int]:
+    ''' Count degree of nodes in data file and returns result in a dictionary. In addition, also
+        returns the number of lines, i.e edges in file.
+        
+        Parameter
+        ---------
+            filename: str
+                Name of input datafile containing list of edges in the form of tuples u,v.
+                
+        Output
+        ------
+            Dictionary of degrees with elements as keys and number of occurences as values. '''
+
+    in_deg = {}
+    out_deg = {}
+
+    with open(filename) as f:
+        for idx, line in enumerate(f):
+            vals = line.strip('\n').split(',')
+            if vals[0] != '' and vals[0] != 'Source':
+                src, dst = vals[0], vals[1]
+                out_deg[src] = out_deg.get(src, 0) + 1
+                in_deg[dst] = in_deg.get(dst, 0) + 1
+
+    return (in_deg, out_deg, idx)
     
