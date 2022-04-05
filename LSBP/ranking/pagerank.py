@@ -8,6 +8,7 @@ Created on April, 2021
 This code is heavily inspired from scikit-network package.
 '''
 
+import json
 import numpy as np
 from scipy import sparse
 from scipy.sparse.coo import coo_matrix
@@ -17,7 +18,8 @@ from multiprocessing import Pool
 import collections, functools, operator
 
 from LSBP.ranking.base import BaseRanking
-from LSBP.data import get_project_root, split_data, listdir_fullpath, count_degree
+from LSBP.data import get_project_root, split_data, listdir_fullpath, count_degree, dict2json, json2dict
+from LSBP.data import Cache
 from LSBP.utils import Bunch
 
 
@@ -30,8 +32,9 @@ class PageRank(BaseRanking):
         self.n_iter = n_iter 
         self.tol = tol
         self.filename = filename
-        self.cache = False
-        self.outdir = self._preprocess()
+        self.cache = None
+        self.graph = Bunch()
+        self._preprocess()
 
         self.bipartite = None
         self.adjacency = None
@@ -39,46 +42,58 @@ class PageRank(BaseRanking):
 
 
     def _preprocess(self):
-        ''' Split input data into equally-sized batches of edges. '''
+        ''' If cache is empty, preprocesses data in parallel. If preprocessed data is already cached,
+            load information. '''
 
-        self.graph = Bunch()
+        self.cache = Cache(self.filename)
+        
+        if self.cache.is_empty:
 
-        # Split data into chunks
-        if not self.cache:
+            # Split data into chunks
             self.graph.outdir = split_data(self.filename)
-            self.cache = True
+
+            # Count neighbors (parallel computing)
+            files = listdir_fullpath(self.graph.outdir)
+            with Pool() as p:
+                tuples = p.map(count_degree, files)
+
+            self.graph.nb_edges = np.sum(x[2] for x in tuples)
+            in_degrees = dict(functools.reduce(
+                                operator.add, 
+                                map(collections.Counter, [x[0] for x in tuples])
+                                ))
+            out_degrees = dict(functools.reduce(
+                                operator.add, 
+                                map(collections.Counter, [x[1] for x in tuples])
+                                ))
+            
+            nodes = np.array(list(set(in_degrees.keys()).union(set(out_degrees.keys()))))
+            self.graph.nb_nodes = len(nodes)
+
+            # Reindex
+            self.graph.label2idx = {}
+            self.graph.idx2label = {}
+            for idx, k in enumerate(nodes):
+                self.graph.label2idx[k] = idx
+                self.graph.idx2label[idx] = k
+
+            # Save information
+            dict2json(in_degrees, os.path.join(self.cache.directory, 'in_degrees.json'))
+            dict2json(out_degrees, os.path.join(self.cache.directory, 'out_degrees.json'))
+            np.save(os.path.join(self.cache.directory, 'nodes.npy'), nodes)
+            dict2json(self.graph.label2idx, os.path.join(self.cache.directory, 'label2idx.json'))
+            dict2json(self.graph.idx2label, os.path.join(self.cache.directory, 'idx2label.json'))
+            
         else:
-            print('Use cached data')
-
-        # Count neighbors (parallel computing)
-        files = listdir_fullpath(self.graph.outdir)
-        with Pool() as p:
-            #in_deg_list, out_deg_list, nb_rows_list = p.map(count_degree, files)
-            tuples = p.map(count_degree, files)
-
-        self.graph.nb_edges = np.sum(x[2] for x in tuples)
-
-        in_degrees = dict(functools.reduce(
-                            operator.add, 
-                            map(collections.Counter, [x[0] for x in tuples])
-                            ))
-        out_degrees = dict(functools.reduce(
-                            operator.add, 
-                            map(collections.Counter, [x[1] for x in tuples])
-                            ))
+            self.graph.outdir = self.cache.directory
+            self.graph.label2idx = json2dict(os.path.join(self.cache.directory, 'label2idx.json'))
+            self.graph.idx2label = json2dict(os.path.join(self.cache.directory, 'idx2label.json'))
+            in_degrees = json2dict(os.path.join(self.cache.directory, 'in_degrees.json'))
+            out_degrees = json2dict(os.path.join(self.cache.directory, 'out_degrees.json'))
+            nodes = np.load(os.path.join(self.cache.directory, 'nodes.npy'))
+            self.graph.nb_nodes = len(nodes)
         
-        nodes = np.array(list(set(in_degrees.keys()).union(set(out_degrees.keys()))))
-
-        # Reindex
-        self.graph.label2idx = {}
-        self.graph.idx2label = {}
-        for idx, k in enumerate(nodes):
-            self.graph.label2idx[k] = idx
-            self.graph.idx2label[idx] = k
         
-        self.graph.nb_nodes = len(nodes)
-
-
     def fit(self, init_scores: np.ndarray = None):
 
         # Format
