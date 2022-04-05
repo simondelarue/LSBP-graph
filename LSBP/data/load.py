@@ -7,7 +7,7 @@ Created on April 2021
 '''
 
 import os
-from os import makedirs
+import json
 from typing import Tuple
 from pathlib import Path
 
@@ -34,6 +34,35 @@ def listdir_fullpath(directory: str) -> list:
     return [os.path.join(directory, f) for f in os.listdir(directory)]
 
 
+def dict2json(data: dict, p: Path):
+    ''' Save Python dictionary to Json. 
+        
+        Parameters
+        ----------
+            data: dict
+                Python dictionary containing data.
+            p: Path
+                Complete path where data is saved. '''
+
+    with open(p, 'w') as f:
+        json.dump(data, f)
+
+def json2dict(filename: Path) -> dict:
+    ''' Load Json file to Python dictionary. 
+        
+        Parameters
+        ----------
+            filename: Path
+                Complete path to Json file. 
+                
+        Output
+        ------
+            Python dictionary. '''
+
+    with open(filename, 'r') as f:
+        data = json.load(f)
+    return data
+
 def split_data(filename: str, max_nb_lines: int = 0) -> bool:
     ''' Split data file into chunks of equal size. Data file is split in chunks along rows.
     
@@ -48,18 +77,16 @@ def split_data(filename: str, max_nb_lines: int = 0) -> bool:
         ------
             True when split is correctly performed. '''
 
-    prefix = f"{filename.split('/')[1].split('.')[0]}"
+    prefix = os.path.basename(filename).split('.')[0]
     max_nb_lines = 5 #TODO: infer number of line per batch
-    root = get_project_root()
-    outdir = f'{root}/preproc_data/{prefix}'
+    outdir = os.path.join(get_project_root(), 'preproc_data', prefix)
             
     if os.system(f"split -l {max_nb_lines} {filename} {prefix}_") == 0:
-        if not os.path.exists(outdir):
-            makedirs(outdir)
         os.system(f'mv *{prefix}_* {outdir}')
         return outdir
     else:
-        print(f'ERROR: No such file: {filename}')
+        raise Exception(f'ERROR: No such file: {filename}')
+
 
 def count_degree(filename: str) -> Tuple[dict, dict, int]:
     ''' Count degree of nodes in data file and returns result in a dictionary. In addition, also
@@ -76,14 +103,16 @@ def count_degree(filename: str) -> Tuple[dict, dict, int]:
 
     in_deg = {}
     out_deg = {}
+    nb_edges = 0
 
     with open(filename) as f:
-        for idx, line in enumerate(f):
+        for line in f:
             vals = line.strip('\n').split(',')
             if vals[0] != '' and vals[0] != 'Source':
                 src, dst = vals[0], vals[1]
                 out_deg[src] = out_deg.get(src, 0) + 1
                 in_deg[dst] = in_deg.get(dst, 0) + 1
+                nb_edges += 1
 
-    return (in_deg, out_deg, idx)
+    return (in_deg, out_deg, nb_edges)
     
