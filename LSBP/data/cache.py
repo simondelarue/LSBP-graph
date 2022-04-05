@@ -8,8 +8,10 @@ Created on April 2021
 
 import os
 import shutil
+import numpy as np
 
-from LSBP.data.load import get_project_root
+from LSBP.data.load import get_project_root, json2dict, dict2json
+from LSBP.utils import Bunch
 
 class Cache:
     ''' Utility for cache. '''
@@ -24,6 +26,37 @@ class Cache:
             print(f'Use cached data in {self.directory}')
         else:
             os.makedirs(self.directory)
+
+    def add(self, graph: Bunch):
+        ''' Cache graph information on disk.
+        
+            Parameters
+            ----------
+                graph: Bunch
+                    Graph object '''
+
+        # Save information into cache
+        dict2json(graph.in_degrees, os.path.join(self.directory, 'in_degrees.json'))
+        dict2json(graph.out_degrees, os.path.join(self.directory, 'out_degrees.json'))
+        np.save(os.path.join(self.directory, 'nodes.npy'), graph.nodes)
+        dict2json(graph.label2idx, os.path.join(self.directory, 'label2idx.json'))
+        dict2json(graph.idx2label, os.path.join(self.directory, 'idx2label.json'))
+
+    def load(self) -> Bunch:
+        ''' Load cached information into a Bunch object. '''
+
+        graph = Bunch()
+
+        # Load information from cache
+        graph.outdir = self.directory
+        graph.label2idx = json2dict(os.path.join(self.directory, 'label2idx.json'))
+        graph.idx2label = json2dict(os.path.join(self.directory, 'idx2label.json'))
+        graph.in_degrees = json2dict(os.path.join(self.directory, 'in_degrees.json'))
+        graph.out_degrees = json2dict(os.path.join(self.directory, 'out_degrees.json'))
+        graph.nodes = np.load(os.path.join(self.directory, 'nodes.npy'))
+        graph.nb_nodes = len(graph.nodes)
+
+        return graph
 
     def clear(self):
         ''' Clear cache by deleting directory. '''

@@ -16,6 +16,7 @@ from itertools import islice
 import os
 from multiprocessing import Pool
 import collections, functools, operator
+from pathlib import Path
 
 from LSBP.ranking.base import BaseRanking
 from LSBP.data import get_project_root, split_data, listdir_fullpath, count_degree, dict2json, json2dict
@@ -67,42 +68,33 @@ class PageRank(BaseRanking):
                                 map(collections.Counter, [x[1] for x in tuples])
                                 ))
             
-            nodes = np.array(list(set(in_degrees.keys()).union(set(out_degrees.keys()))))
-            self.graph.nb_nodes = len(nodes)
+            self.graph.nodes = np.array(list(set(in_degrees.keys()).union(set(out_degrees.keys()))))
+            self.graph.nb_nodes = len(self.graph.nodes)
 
             # Reindex
             self.graph.label2idx = {}
             self.graph.idx2label = {}
-            for idx, k in enumerate(nodes):
+            self.graph.in_degrees = {}
+            self.graph.out_degrees = {}
+
+            for idx, k in enumerate(self.graph.nodes):
                 self.graph.label2idx[k] = idx
                 self.graph.idx2label[idx] = k
+                self.graph.in_degrees[idx] = in_degrees.get(k)
+                self.graph.out_degrees[idx] = out_degrees.get(k)
 
-            # Save information
-            dict2json(in_degrees, os.path.join(self.cache.directory, 'in_degrees.json'))
-            dict2json(out_degrees, os.path.join(self.cache.directory, 'out_degrees.json'))
-            np.save(os.path.join(self.cache.directory, 'nodes.npy'), nodes)
-            dict2json(self.graph.label2idx, os.path.join(self.cache.directory, 'label2idx.json'))
-            dict2json(self.graph.idx2label, os.path.join(self.cache.directory, 'idx2label.json'))
-            
+            # Cache information
+            self.cache.add(self.graph)
+ 
         else:
-            self.graph.outdir = self.cache.directory
-            self.graph.label2idx = json2dict(os.path.join(self.cache.directory, 'label2idx.json'))
-            self.graph.idx2label = json2dict(os.path.join(self.cache.directory, 'idx2label.json'))
-            in_degrees = json2dict(os.path.join(self.cache.directory, 'in_degrees.json'))
-            out_degrees = json2dict(os.path.join(self.cache.directory, 'out_degrees.json'))
-            nodes = np.load(os.path.join(self.cache.directory, 'nodes.npy'))
-            self.graph.nb_nodes = len(nodes)
-        
-        
+            # Load information from cache
+            self.graph = self.cache.load()
+
     def fit(self, init_scores: np.ndarray = None):
 
         # Format
-        n_row, n_col = input_matrix.shape
-        """if n_row != n_col:
-            self.bipartite = True
-            self.adjacency = bipartite2undirected(input_matrix)
-        else:"""
-        self.adjacency = input_matrix
+        n_row, n_col = self.graph.nb_nodes, self.graph.nb_nodes
+        #self.adjacency = input_matrix
 
         # Get seeds
         seeds_row = np.ones(n_row)
@@ -115,111 +107,21 @@ class PageRank(BaseRanking):
         if seeds.sum() > 0:
             seeds /= seeds.sum()
 
-        # Get pageRank
-        self.scores_ = self._get_pagerank(self.adjacency, seeds, damping_factor=self.damping_factor, n_iter=self.n_iter,
-                                        tol=self.tol, solver=self.solver, init_scores=init_scores)
+        # Out degree matrix
 
-        if self.bipartite:
-            self._split_vars(input_matrix.shape)
+
+        # Get pageRank
+        #self.scores_ = self._get_pagerank(self.adjacency, seeds, damping_factor=self.damping_factor, n_iter=self.n_iter,
+        #                                tol=self.tol, solver=self.solver, init_scores=init_scores)
+        self.scores_ = self.get_pagerank(self.graph.outdir)
+
+        '''if self.bipartite:
+            self._split_vars(input_matrix.shape)'''
 
         return self
 
-    def _get_pagerank(self, adjacency: sparse.coo_matrix, seeds: np.ndarray, damping_factor: float, n_iter: int, 
-                      tol: float, solver: str = 'piteration', init_scores: np.ndarray = None, neighbs_cnt=None) -> np.ndarray:
+    def _get_pagerank(self, filename: Path, seeds: np.ndarray, damping_factor: float, n_iter: int, 
+                      tol: float, init_scores: np.ndarray = None, neighbs_cnt=None) -> np.ndarray:
         ''' PageRank solver '''
 
-        n = adjacency.shape[0]
         
-        if solver == 'piteration':
-
-            out_degrees = adjacency.dot(np.ones(n)).astype(bool)
-            norm = adjacency.dot(np.ones(adjacency.shape[1]))
-            diag: sparse.coo_matrix = sparse.diags(norm, format='coo')
-            diag.data = 1 / diag.data
-
-            W = (damping_factor * diag.dot(adjacency)).T.tocoo()
-            v0 = (np.ones(n) - damping_factor * out_degrees) * seeds
-            
-            if init_scores is not None:
-                scores = init_scores * seeds
-            else:
-                scores = v0
-
-            for i in range(n_iter):
-                scores_ = W.dot(scores) + v0 * scores.sum()
-                scores_ /= scores_.sum()
-                if np.linalg.norm(scores - scores_, ord=1) < tol:
-                    break
-                else:
-                    scores = scores_
-
-            return scores / scores.sum()
-
-        elif solver == 'normal':
-            
-            n = len(neighbs_cnt)
-            
-            if init_scores is not None:
-                scores = init_scores
-            else:
-                scores = np.ones(n) / n
-
-            #out_degrees = adjacency.dot(np.ones(n)).astype(bool)
-            #out_degrees_inv = 1 / self.out_degrees
-            #norm = adjacency.dot(np.ones(adjacency.shape[1]))
-            #diag: sparse.coo_matrix = sparse.diags(norm, format='coo')
-            #diag.data = 1 / diag.data
-            #print(adjacency.row)
-            #print(adjacency.col)
-            
-            #scores_ = np.zeros(n)
-            min_pr = (1 - damping_factor) / n
-            scores_ = np.zeros(n)
-
-            for src, dst in zip(adjacency.row, adjacency.col):
-                #print(src, dst)
-                print(f'({src}, {dst}) - Source degree: {neighbs_cnt.get(src)} - source score: {scores[src]} - up: {damping_factor * scores[src] / neighbs_cnt.get(src)}')
-                #scores_[dst] += damping_factor * scores[src] / neighbs_cnt.get(src)
-                """try:
-                    scores[src]
-                except IndexError:
-                    print(f'Source: {src} - Dest: {dst} - len scores: {len(scores)}')
-                try:
-                    damping_factor * scores[src] / neighbs_cnt.get(src) + min_pr
-                except TypeError:
-                    print(f'Source: {src} - Dest: {dst} - len scores: {len(scores)} - score {scores[src]} - neighb: {neighbs_cnt.get(src)}')
-                """
-                scores_[dst] += damping_factor * scores[src] / neighbs_cnt.get(src) #+ min_pr
-            
-            scores = scores_ + scores + min_pr
-            #scores = scores_ + scores
-            print('SCORES: ', scores)
-            scores = scores / scores.sum() # normalization of scores between batches
-
-            return scores
-
-        elif solver == 'normal-mask':
-            
-            n = len(neighbs_cnt)
-            
-            if init_scores is not None:
-                scores = init_scores
-            else:
-                scores = np.ones(n) / n
-            
-            min_pr = (1 - damping_factor) / n
-            scores_ = np.zeros(n)
-
-            # using numpy masks
-            src_idxs = adjacency.row
-            dst_idxs = adjacency.col
-            out_degrees_src = np.array([neighbs_cnt.get(src) for src in src_idxs])
-            scores_[dst_idxs] += damping_factor * scores[src_idxs] / out_degrees_src + min_pr
-
-            #for src, dst in zip(adjacency.row, adjacency.col):
-            #    scores_[dst] += damping_factor * scores[src] / neighbs_cnt.get(src) + min_pr
-            
-            scores = scores_ + scores
-            scores = scores / scores.sum() # normalization of scores between batches
-
-            return scores
