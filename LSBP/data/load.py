@@ -60,7 +60,7 @@ def json2dict(filename: Path) -> dict:
             Python dictionary. '''
 
     with open(filename, 'r') as f:
-        data = json.load(f)
+        data = json.load(f, object_hook=lambda x: {int(k): v for k, v in x.items()})
     return data
 
 def split_data(filename: str, max_nb_lines: int = 0) -> bool:
