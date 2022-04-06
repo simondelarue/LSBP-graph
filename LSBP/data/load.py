@@ -47,20 +47,25 @@ def dict2json(data: dict, p: Path):
     with open(p, 'w') as f:
         json.dump(data, f)
 
-def json2dict(filename: Path) -> dict:
+def json2dict(filename: Path, keys_int: bool = False) -> dict:
     ''' Load Json file to Python dictionary. 
         
         Parameters
         ----------
             filename: Path
                 Complete path to Json file. 
+            keys_int: bool
+                If True, forces keys element to be loaded as integers.
                 
         Output
         ------
             Python dictionary. '''
 
     with open(filename, 'r') as f:
-        data = json.load(f, object_hook=lambda x: {int(k): v for k, v in x.items()})
+        if keys_int:
+            data = json.load(f, object_hook=lambda x: {int(k): v for k, v in x.items()})
+        else:
+            data = json.load(f)
     return data
 
 def split_data(filename: str, max_nb_lines: int = 0) -> bool:
@@ -92,14 +97,14 @@ def count_degree(filename: str) -> Tuple[dict, dict, int]:
     ''' Count degree of nodes in data file and returns result in a dictionary. In addition, also
         returns the number of lines, i.e edges in file.
         
-        Parameter
-        ---------
-            filename: str
-                Name of input datafile containing list of edges in the form of tuples u,v.
-                
-        Output
-        ------
-            Dictionary of degrees with elements as keys and number of occurences as values. '''
+    Parameter
+    ---------
+        filename: str
+            Name of input datafile containing list of edges in the form of tuples u,v.
+            
+    Output
+    ------
+        Dictionary of degrees with elements as keys and number of occurences as values. '''
 
     in_deg = {}
     out_deg = {}

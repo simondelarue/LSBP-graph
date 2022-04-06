@@ -10,23 +10,21 @@ import numpy as np
 from scipy import sparse
 
 
-def from_edge_list(filename, reindex) -> sparse.coo_matrix:
+def from_edge_list(filename: str, reindex: dict) -> sparse.coo_matrix:
     ''' Reads edge list and parse it to scipy COO format.
     
-        Parameters
-        ----------
-            filename: str
-                Name of data file containing list of edges separated by commas.
-            reindex: dict
-                Dictionary of reindexed entries, with labels as keys and indexes labels as values. 
-                
-        Output
-        ------
-            COO matrix '''
+    Parameters
+    ----------
+        filename: str
+            Name of data file containing list of edges separated by commas.
+        reindex: dict
+            Dictionary of reindexed entries, with labels as keys and indexes labels as values. 
+            
+    Output
+    ------
+        Adjacency matrix in sparse.COO format. '''
     
     n = len(reindex.keys())
-    print(f'N: {n}')
-    print(f'reindex: {reindex}')
     rows, cols = [], []
     
     with open(filename) as f:
@@ -36,6 +34,5 @@ def from_edge_list(filename, reindex) -> sparse.coo_matrix:
                 rows.append(reindex.get(vals[0]))
                 cols.append(reindex.get(vals[1]))
     data = np.ones(len(rows))
-    print(rows)
-    print(cols)
+
     return sparse.coo_matrix((data, (rows, cols)), shape=(n, n))
