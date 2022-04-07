@@ -10,6 +10,30 @@ import os
 import json
 from typing import Tuple
 from pathlib import Path
+from tqdm import tqdm
+
+from LSBP.utils import Bunch
+
+def sniff_delimiter(filename: str) -> str:
+    ''' Infer delimiter in data file by parsing its first row.
+    
+    Parameter
+    ---------
+        filename: str
+            Name of data file.
+    
+    Output
+    ------
+        Delimiter as a string. '''
+
+    with open(filename, 'r') as f:
+        header = f.readline()
+        if header.find(";") !=- 1:
+            return ";"
+        elif header.find(",") != -1:
+            return ","
+        elif header.find("\t") != -1:
+            return "\t"
 
 def get_project_root() -> Path:
     ''' Returns a Path to project root directory. 
@@ -91,6 +115,83 @@ def split_data(filename: str, max_nb_lines: int = 0) -> bool:
         return outdir
     else:
         raise Exception(f'ERROR: No such file: {filename}')
+
+def split(filename: str, outdir: Path, batch_size: int = 5000000) -> Bunch:
+    ''' Split data file into chunks of equal size. Data file is split in chunks along rows.
+    
+    Parameters
+    ---------
+        filename: str
+            Filename (with complete path) of input data file. 
+        outdir: Path
+            Path to output directory.
+        batch_size: int
+            Maximum number of line in one chunk. 
+    
+    Output
+    ------
+        Graph as a Bunch. '''
+
+    graph = Bunch()
+
+    label2idx, idx2label = {}, {}
+    in_deg, out_deg = {}, {}
+    idx = 0
+    m, m_tmp = 0, 0
+    num_batch = 0
+
+    with open(filename) as f:
+        
+        delimiter = sniff_delimiter(filename)
+        outfile = os.path.join(outdir, f'{os.path.basename(outdir)}')
+        o = open(f'{outfile}_{num_batch}', 'a')
+
+        for line in tqdm(f):
+            vals = line.strip('\n').split(delimiter)
+            src, dst = vals[0], vals[1]
+               
+            if src != '' and src != 'Source':
+                if src not in label2idx:
+                    label2idx[src] = idx
+                    idx2label[idx] = src
+                    idx += 1
+                if dst not in label2idx:
+                    label2idx[dst] = idx
+                    idx2label[idx] = dst
+                    idx += 1
+
+                out_deg[label2idx.get(src)] = out_deg.get(label2idx.get(src), 0) + 1
+                in_deg[label2idx.get(dst)] = in_deg.get(label2idx.get(dst), 0) + 1
+                
+                # TODO: optimize initialization of every existing nodes
+                if dst not in out_deg:
+                    out_deg[label2idx.get(dst)] = 0
+                if src not in in_deg:
+                    in_deg[label2idx.get(src)] = 0
+            
+                # Write to batch
+                o.write(f'{label2idx.get(src)},{label2idx.get(dst)}\n')      
+            
+                m += 1
+                m_tmp += 1
+                
+                # Change batch when batch_size is reached
+                if m_tmp >= batch_size:
+                    o.close()
+                    num_batch += 1
+                    m_tmp = 0
+                    o = open(f'{outfile}_{num_batch}', 'a')
+    
+    graph.nb_edges = m
+    graph.nb_nodes = len(label2idx)
+    graph.in_degrees = in_deg
+    graph.out_degrees = out_deg
+    graph.label2idx = label2idx
+    graph.idx2label = idx2label
+    graph.files = listdir_fullpath(outdir)
+    graph.outdir = outdir
+
+    return graph
 
 
 def count_degree(filename: str) -> Tuple[dict, dict, int]:
