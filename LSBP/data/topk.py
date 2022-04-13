@@ -13,9 +13,10 @@ output:
 from collections import defaultdict
 from tqdm import tqdm
 import os
+import random
 
 from LSBP.utils import Bunch
-from LSBP.data.load import sniff_delimiter
+from LSBP.data.load import sniff_delimiter, listdir_fullpath
 
 def topk(filename: str, outdir: str, metric: str = 'indegree') -> Bunch():
     ''' Topk algorithm to filter data in linear time. 
@@ -36,18 +37,126 @@ def topk(filename: str, outdir: str, metric: str = 'indegree') -> Bunch():
     label2idx, idx2label = {}, {}
     in_deg, out_deg = {}, {}
     idx = 0
-    m_max = 15
+    m_tmp = 0
+    V_tmp_top = {}
+   
+    
+    if filename.endswith('soc-LiveJournal1.txt'):
+        nb_rows = 68993774
+    else:
+        nb_rows = None
+
+    with open(filename) as f:
+
+        delimiter = sniff_delimiter(filename)
+        outfile = os.path.join(outdir, f'{os.path.basename(outdir)}')
+
+        for line in tqdm(f, total=nb_rows):
+    
+            vals = line.strip('\n').split(delimiter)
+            src, dst = vals[0], vals[1]
+            if src != '' and src != 'Source':
+
+                if src not in label2idx:
+                    label2idx[src] = idx
+                    idx2label[idx] = src
+                    idx += 1
+                if dst not in label2idx:
+                    label2idx[dst] = idx
+                    idx2label[idx] = dst
+                    idx += 1
+
+                out_deg[label2idx.get(src)] = out_deg.get(label2idx.get(src), 0) + 1
+                in_deg[label2idx.get(dst)] = in_deg.get(label2idx.get(dst), 0) + 1
+                
+                # TODO: optimize initialization of every existing nodes
+                if label2idx.get(dst) not in out_deg:
+                    out_deg[label2idx.get(dst)] = 0
+                if label2idx.get(src) not in in_deg:
+                    in_deg[label2idx.get(src)] = 0
+
+                # Add nodes
+                #print('--------------------------------')
+                #rint(f'\n{src}->{dst}')
+
+                #print(f'src label: {label2idx.get(src)} -dst label: {label2idx.get(dst)}')
+                #print(in_deg)
+
+                #print(f'In degree of source node: {in_deg.get(label2idx.get(src))}')
+                if in_deg.get(label2idx.get(src)) > 0:
+
+                    V_tmp_top[dst] = V_tmp_top.get(dst, 0) + 1
+                    V_tmp_top[src] = V_tmp_top.get(src, 1)
+                    m_tmp += 1
+                #print(f'v_tmp : {V_tmp_top}')
+                #print(f'm_tmp : {m_tmp}')
+
+        #nodes = dict(sorted(V_tmp_top.items(), key=lambda x: x[1], reverse=True))
+        nodes = {k: v for k, v in V_tmp_top.items() if v > 10}
+        #print(f'Nodes: {nodes}')
+        print(f'Number of nodes retained in dense subraph: {len(nodes)}')
+
+    # Write to result file
+    cpt = 0
+    with open(f'{outfile}_topk', 'a') as o:
+        with open(filename) as f:
+            delimiter = sniff_delimiter(filename)
+            outfile = os.path.join(outdir, f'{os.path.basename(outdir)}')
+            for line in tqdm(f, total=nb_rows):
+                vals = line.strip('\n').split(delimiter)
+                src, dst = vals[0], vals[1]
+                if nodes.get(src) is not None and nodes.get(dst) is not None:
+                    o.write(f'{label2idx.get(src)},{label2idx.get(dst)}\n')
+                    cpt += 1
+    print(f'Number of edges retained in dense subgraph: {cpt}')
+        
+    graph.nb_edges = idx # True number of nodes in total graph
+    graph.nb_nodes = len(label2idx)
+    graph.in_degrees = in_deg
+    graph.out_degrees = out_deg
+    graph.label2idx = label2idx
+    graph.idx2label = idx2label
+    graph.files = listdir_fullpath(outdir)  
+    graph.outdir = outdir
+
+    return graph
+
+def topk_old(filename: str, outdir: str, metric: str = 'indegree') -> Bunch():
+    ''' Topk algorithm to filter data in linear time. 
+    
+    Parameter
+    ---------
+        filename: str
+            Name of data file.
+        metric: str (default='indegree')
+            Parameter used to filter data. 
+    
+    Output
+    ------
+        Graph as a Bunch. '''
+
+    graph = Bunch()
+
+    label2idx, idx2label = {}, {}
+    in_deg, out_deg = {}, {}
+    idx = 0
+    m_max = 100000
     m_tmp = 0
     V_cache = set()
     V_tmp_top = defaultdict(set)
+    V_tmp_top_inv = defaultdict(set)
     V_res = set()
+    min_degree = 1
+    min_degree_tmp = 1e9
+    j = 0
     
     with open(filename) as f:
 
         delimiter = sniff_delimiter(filename)
         outfile = os.path.join(outdir, f'{os.path.basename(outdir)}')
 
-        for line in tqdm(f):
+        for line in tqdm(f, total=689000000):
+    
             vals = line.strip('\n').split(delimiter)
             src, dst = vals[0], vals[1]
             if src != '' and src != 'Source':
@@ -71,49 +180,76 @@ def topk(filename: str, outdir: str, metric: str = 'indegree') -> Bunch():
                     in_deg[label2idx.get(src)] = 0
 
                 # Add nodes
-                print('--------------------------------')
-                print(f'\n{src}->{dst}')
-                print(f'V_cache: {V_cache}')
-                print(f'V_res: {V_res}')
+                #rint('--------------------------------')
+                #print(f'\n{src}->{dst}')
                 
-                #V_cache[dst] |= {src}
                 V_cache.add(dst)
                 
                 if src in V_cache:
-                    V_res.add(dst)
-                    V_res.add(src)
 
                     #V_tmp_top[dst] = V_tmp_top.get(dst, 0) + 1
+                    #m_tmp = sum([len(vals) for vals in V_tmp_top.values()])
+
+                    # Dense subgraph history such as dst: {src}
                     V_tmp_top[dst] |= {src}
-                    m_tmp = sum([len(vals) for vals in V_tmp_top.values()])
-                
-                print(f'V_cache updated: {V_cache}')
-                print(f'V_tmp_top updated: {V_tmp_top}')
-                print(f'V_res updated: {V_res}')
-                print(f'number of edges in top: {m_tmp}')
+                    # Dense subgraph history such as src: {dst}
+                    V_tmp_top_inv[src] |= {dst}
+                    m_tmp += 1
 
                 # Remove nodes if number of edges is higher than m_max
                 while m_tmp > m_max:
-                    print('REMOVE NODES')
-                    min_deg = sorted({k: len(v) for k, v in V_tmp_top.items()}.items(), key=lambda x: x[1])[0]
+                    #print(f'{m_tmp} > {m_max}')
+                    #print('REMOVE NODES')
                     
-                    """for k, v in V_cache.items():
-                        if min_deg[0] in v and k in V_tmp_top:
-                            V_tmp_top[k] -= 1
-                            m_tmp -= 1"""
-                    for k, v in V_tmp_top.items():
-                        if min_deg[0] in v:
-                            V_tmp_top[k].remove(min_deg[0])
-                            m_tmp -= 1
-                    print(f'Min node: {min_deg[0]}(deg={min_deg[1]})')
+                    # sort all nodes and keep node with minimal degree
+                    #min_deg = sorted({k: len(v) for k, v in V_tmp_top.items()}.items(), key=lambda x: x[1])[0]
+                    
+                    # iterates over nodes and retain the first with degree <= threshold
+                    # Problem -> order of keys is the same most of the time, wich makes the algo
+                    # computation time to find smallest node degree increase with time.
+                    # Thus, we transform keys and values in lists, and use index of previously found
+                    # smallest values as a starting point of iteration
 
-                    V_res.remove(min_deg[0])
-                    m_tmp -= len(V_tmp_top.get(min_deg[0]))
-                    V_tmp_top.pop(min_deg[0])
+                    for i, (k, v) in tqdm(enumerate(zip(list(V_tmp_top.keys())[j:], list(V_tmp_top.values())[j:])), leave=True):
+                    #for i, (k, v) in enumerate(V_tmp_top.items()):
+                        if len(v) <= 2*(min_degree):
+                            #print(f'after {i} iterations - {min_degree}')
+                            min_node_degree = k
+                            j = i
+                            break
+                        elif len(v) > min_degree and len(v) <= min_degree_tmp:
+                            min_degree_tmp = len(v)
+                            min_node_degree = k
+                    # randomly select a node
+                    #min_node_degree = random.choice(list(V_tmp_top.keys()))
+                            
+                    #print(f'min deg: {min_node_degree}-{min_degree}-{V_tmp_top.get(min_node_degree)}')
+
+                    # iterates overs nodes in dense subgraph and remove links from minimal degree node to other nodes
+                    # -> needs to be optimized by storing a dense subgraph src: {dest}, in addition to already stored 
+                    # dense subgraph dst: {src}
+                    """for k, v in V_tmp_top.items():
+                        if min_node_degree in v:
+                            V_tmp_top[k].remove(min_node_degree)
+                            m_tmp -= 1"""
                     
-                    print(f'V_tmp_top updated: {V_tmp_top}')
-                    print(f'V_res updated: {V_res}')
-                    print(f'number of edges in top: {m_tmp}')
+                    # We retrieve all destinations of node with minimal degree, using inversed dense subgraph history,
+                    # then we iterate over this nodes in the dense subgraph history, in order to remove the remaining
+                    # links with the minimal degree node.
+                    neighbs = V_tmp_top_inv.get(min_node_degree, set())
+
+                    if len(neighbs) > 0:
+                        for neighb in tqdm(neighbs, leave=False):
+                            if neighb in V_tmp_top:
+                                V_tmp_top[neighb].discard(min_node_degree)
+                                m_tmp -= 1
+                        # remove node with minimal degree from inversed dense subgraph history
+                        V_tmp_top_inv.pop(min_node_degree)
+
+                    #V_res.remove(min_deg[0])
+                    m_tmp -= len(V_tmp_top.get(min_node_degree))
+                    V_tmp_top.pop(min_node_degree)
+
 
         # Write to result file
         with open(f'{outfile}_topk', 'a') as o:
@@ -127,7 +263,7 @@ def topk(filename: str, outdir: str, metric: str = 'indegree') -> Bunch():
     graph.out_degrees = out_deg
     graph.label2idx = label2idx
     graph.idx2label = idx2label
-    graph.files = f'{outfile}_topk'
+    graph.files = listdir_fullpath(outdir)  
     graph.outdir = outdir
 
     return graph
