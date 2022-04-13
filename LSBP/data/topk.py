@@ -10,6 +10,7 @@ output:
     - subgraph composed of k nodes and m edges
 """
 
+from cProfile import label
 from collections import defaultdict
 from tqdm import tqdm
 import os
@@ -39,6 +40,12 @@ def topk(filename: str, outdir: str, metric: str = 'indegree') -> Bunch():
     idx = 0
     m_tmp = 0
     V_tmp_top = {}
+    V_tmp_top_idx = {}
+    res = defaultdict(set)
+    res_idx = defaultdict(set)
+    nb_edges_tot = 0
+    cpt = 0
+    res = {}
    
     
     if filename.endswith('soc-LiveJournal1.txt'):
@@ -46,58 +53,78 @@ def topk(filename: str, outdir: str, metric: str = 'indegree') -> Bunch():
     else:
         nb_rows = None
 
-    with open(filename) as f:
+    outfile = os.path.join(outdir, f'{os.path.basename(outdir)}')
 
-        delimiter = sniff_delimiter(filename)
-        outfile = os.path.join(outdir, f'{os.path.basename(outdir)}')
+    with open(f'{outfile}_topk', 'a') as o:
+        with open(filename) as f:
 
-        for line in tqdm(f, total=nb_rows):
-    
-            vals = line.strip('\n').split(delimiter)
-            src, dst = vals[0], vals[1]
-            if src != '' and src != 'Source':
+            delimiter = sniff_delimiter(filename)
 
-                if src not in label2idx:
-                    label2idx[src] = idx
-                    idx2label[idx] = src
-                    idx += 1
-                if dst not in label2idx:
-                    label2idx[dst] = idx
-                    idx2label[idx] = dst
-                    idx += 1
+            for line in tqdm(f, total=nb_rows):
+                nb_edges_tot += 1
+        
+                vals = line.strip('\n').split(delimiter)
+                src, dst = vals[0], vals[1]
+                if src != '' and src != 'Source':
 
-                out_deg[label2idx.get(src)] = out_deg.get(label2idx.get(src), 0) + 1
-                in_deg[label2idx.get(dst)] = in_deg.get(label2idx.get(dst), 0) + 1
-                
-                # TODO: optimize initialization of every existing nodes
-                if label2idx.get(dst) not in out_deg:
-                    out_deg[label2idx.get(dst)] = 0
-                if label2idx.get(src) not in in_deg:
-                    in_deg[label2idx.get(src)] = 0
+                    if src not in label2idx:
+                        label2idx[src] = idx
+                        idx2label[idx] = src
+                        idx += 1
+                    if dst not in label2idx:
+                        label2idx[dst] = idx
+                        idx2label[idx] = dst
+                        idx += 1
 
-                # Add nodes
-                #print('--------------------------------')
-                #rint(f'\n{src}->{dst}')
+                    out_deg[label2idx.get(src)] = out_deg.get(label2idx.get(src), 0) + 1
+                    in_deg[label2idx.get(dst)] = in_deg.get(label2idx.get(dst), 0) + 1
+                    
+                    # TODO: optimize initialization of every existing nodes
+                    if label2idx.get(dst) not in out_deg:
+                        out_deg[label2idx.get(dst)] = 0
+                    if label2idx.get(src) not in in_deg:
+                        in_deg[label2idx.get(src)] = 0
 
-                #print(f'src label: {label2idx.get(src)} -dst label: {label2idx.get(dst)}')
-                #print(in_deg)
+                    # Add nodes
+                    #print('--------------------------------')
+                    #print(f'\n{label2idx.get(src)}->{label2idx.get(dst)}')
 
-                #print(f'In degree of source node: {in_deg.get(label2idx.get(src))}')
-                if in_deg.get(label2idx.get(src)) > 0:
+                    #print(f'src label: {label2idx.get(src)} -dst label: {label2idx.get(dst)}')
+                    #print(in_deg)
 
-                    V_tmp_top[dst] = V_tmp_top.get(dst, 0) + 1
-                    V_tmp_top[src] = V_tmp_top.get(src, 1)
-                    m_tmp += 1
-                #print(f'v_tmp : {V_tmp_top}')
-                #print(f'm_tmp : {m_tmp}')
+                    #print(f'In degree of source node: {in_deg.get(label2idx.get(src))}')
+                    if in_deg.get(label2idx.get(src)) > 0:
+
+                        V_tmp_top[dst] = V_tmp_top.get(dst, 0) + 1
+                        V_tmp_top[src] = V_tmp_top.get(src, 1)
+
+                        #V_tmp_top_idx[label2idx.get(dst)] = V_tmp_top_idx.get(label2idx.get(dst), 0) + 1
+                        #V_tmp_top_idx[label2idx.get(src)] = V_tmp_top_idx.get(label2idx.get(src), 1)
+                        m_tmp += 1
+
+                        #if V_tmp_top.get(dst) >= 5 or V_tmp_top.get(src) >= 5:
+                        if V_tmp_top.get(dst) >= 3 and V_tmp_top.get(src) >= 3:
+                            #res[dst] |= {src}
+                            #res_idx[label2idx.get(dst)] |= {label2idx.get(src)}
+                            cpt += 1
+                            o.write(f'{label2idx.get(src)},{label2idx.get(dst)}\n')
+                            if res.get(src) is None:
+                                res[src] = 1
+                            if res.get(dst) is None:
+                                res[dst] = 1
+                        
+                #print(f'Indeg: {in_deg}')
+                #print(f'V_tmp_top_idx: {V_tmp_top_idx}')
+                #print(f'res_idx: {res_idx}')
 
         #nodes = dict(sorted(V_tmp_top.items(), key=lambda x: x[1], reverse=True))
-        nodes = {k: v for k, v in V_tmp_top.items() if v > 10}
+        #nodes = {k: v for k, v in V_tmp_top.items() if v > 10}
         #print(f'Nodes: {nodes}')
-        print(f'Number of nodes retained in dense subraph: {len(nodes)}')
+        
+        #print(f'Number of nodes retained in dense subraph: {len(nodes)}')
 
     # Write to result file
-    cpt = 0
+    """cpt = 0
     with open(f'{outfile}_topk', 'a') as o:
         with open(filename) as f:
             delimiter = sniff_delimiter(filename)
@@ -107,8 +134,21 @@ def topk(filename: str, outdir: str, metric: str = 'indegree') -> Bunch():
                 src, dst = vals[0], vals[1]
                 if nodes.get(src) is not None and nodes.get(dst) is not None:
                     o.write(f'{label2idx.get(src)},{label2idx.get(dst)}\n')
-                    cpt += 1
-    print(f'Number of edges retained in dense subgraph: {cpt}')
+                    cpt += 1"""
+    """cpt = 0
+    num_nodes = set()
+    with open(f'{outfile}_topk', 'a') as o:
+        for k, vals in res.items():
+            if k not in num_nodes:
+                num_nodes.add(k)
+            for v in vals:
+                o.write(f'{label2idx.get(k)},{label2idx.get(v)}\n')
+                cpt += 1
+                if v not in num_nodes:
+                    num_nodes.add(v)"""
+    print(f'Number of nodes retained in dense subgraph: {len(res)}/{idx}')
+    print(f'Number of edges retained in dense subgraph: {cpt}/{nb_edges_tot}')
+    #print(f'Number of nodes retained in dense subgraph: {len(num_nodes)}/{idx}')
         
     graph.nb_edges = idx # True number of nodes in total graph
     graph.nb_nodes = len(label2idx)
