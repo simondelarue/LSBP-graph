@@ -89,8 +89,6 @@ class PageRank(BaseRanking):
         # Preprocessing
         self._preprocess(filename=filename, use_cache=use_cache, method=method)
 
-        print(self.graph.files)
-
         n_row, n_col = self.graph.nb_nodes, self.graph.nb_nodes
         
         # Get seeds
@@ -133,8 +131,8 @@ class PageRank(BaseRanking):
 
         elif method == 'topk':
             
-            adjacency = from_edge_list(self.graph.files, n_row)
-            print(f'adjacency shape: {adjacency.shape}')
+            f = os.path.join(self.graph.outdir, self.graph.files[0])
+            adjacency = from_edge_list(f, n_row)
 
             # Inverse degree matrix (COO matrix)
             out_degrees = np.array(list(dict(sorted(self.graph.out_degrees.items(), key=lambda x: x[0], reverse=False)).values()))
