@@ -10,16 +10,123 @@ output:
     - subgraph composed of k nodes and m edges
 """
 
-from cProfile import label
 from collections import defaultdict
 from tqdm import tqdm
 import os
-import random
+from scipy import sparse
+import numpy as np
 
 from LSBP.utils import Bunch
 from LSBP.data.load import sniff_delimiter, listdir_fullpath
 
-def topk(filename: str, outdir: str, metric: str = 'indegree') -> Bunch():
+
+def densest_subgraph(filename: str, outdir: str, e_max: int = 100000, d_min: int = 10, alpha: int = 0.5) -> Bunch():
+    ''' Computes a one-pass densest subgraph approximation given a stream of edges.
+    
+    Parameters
+    ----------
+        filename: str
+            Name of data file.
+        outdir: str
+            Complete path to output directory.
+        e_max: int (default=100000)
+            Maximum number of edges allowed in densest subgraph.
+        d_min: int (default=10)
+            Minimum in-degree bound for densest subgraph.
+        alpha: int (default=0.5)
+            Threshold applied to e_max. Above this threshold, densest subgraph is pruned according to nodes in-degrees.
+    
+    Output
+    ------
+        Densest subgraph approximation as a Bunch object. '''
+
+    graph = Bunch()
+    
+    # Graph information
+    label2idx, idx2label = {}, {} # index-label 
+    in_deg, out_deg = {}, {} # in and out-degree
+
+    # Densest subgraph information
+    A_lil = sparse.lil_matrix()
+    label2idx_lil = {}
+    idx_lil = 0
+    in_deg_lil = np.array(e_max)
+
+
+    outfile = os.path.join(outdir, f'{os.path.basename(outdir)}')
+
+    with open(f'{outfile}_topk', 'a') as o:
+        with open(filename) as f:
+
+            delimiter = sniff_delimiter(filename)
+
+            for line in tqdm(f):
+        
+                vals = line.strip('\n').split(delimiter)
+                src, dst = vals[0], vals[1]
+                if src != '' and src != 'Source':
+
+                    # Reindex nodes
+                    if src not in label2idx:
+                        label2idx[src] = idx
+                        idx2label[idx] = src
+                        idx += 1
+                    if dst not in label2idx:
+                        label2idx[dst] = idx
+                        idx2label[idx] = dst
+                        idx += 1
+
+                    # In and out degrees
+                    out_deg[label2idx.get(src)] = out_deg.get(label2idx.get(src), 0) + 1
+                    in_deg[label2idx.get(dst)] = in_deg.get(label2idx.get(dst), 0) + 1
+                    
+                    # TODO: optimize initialization of every existing nodes
+                    if label2idx.get(dst) not in out_deg:
+                        out_deg[label2idx.get(dst)] = 0
+                    if label2idx.get(src) not in in_deg:
+                        in_deg[label2idx.get(src)] = 0
+
+                    # Densest subgraph approximation
+                    if in_deg.get(label2idx.get(dst)) > d_min and in_deg.get(label2idx.get(src)) > d_min:
+                        
+                        # Reindex nodes from 0 to |V(subgraph)| - 1
+                        if dst not in label2idx_lil:
+                            label2idx_lil[dst] = idx_lil
+                            idx_lil += 1
+                        if src not in label2idx_lil:
+                            label2idx_lil[src] = idx_lil
+                            idx_lil += 1
+                        
+                        # Fill adjacency list
+                        A_lil[label2idx_lil.get(src), label2idx_lil.get(dst)] = 1
+
+                        # Keep track of in-degrees in densest subgraph
+                        in_deg_lil[label2idx_lil.get(dst)] += 1
+
+                    # Pruning: remove nodes with smallest in-degree
+                    # Note: in-degree is computed from original graph
+                    if A_lil.nnz == e_max:
+
+                        #A_csr = A_lil.tocsr() # is it necessary to convert to csr format ?
+                        index = np.argsort(-in_deg_lil) # index of nodes with highest in-degrees
+                        mask = np.cumsum(in_deg_lil[index]) <= alpha * e_max # mask on nodes with highest in-degrees, wrt max number of edges
+                        A_lil = A_lil[mask][:, mask] # filter adjacency list
+
+
+
+    graph.nb_edges = idx # True number of nodes in total graph
+    graph.nb_nodes = len(label2idx)
+    graph.in_degrees = in_deg
+    graph.out_degrees = out_deg
+    graph.label2idx = label2idx
+    graph.idx2label = idx2label
+    graph.files = listdir_fullpath(outdir)  
+    graph.outdir = outdir
+
+    return graph
+
+
+def topk_old_bis(filename: str, outdir: str, metric: str = 'indegree') -> Bunch():
     ''' Topk algorithm to filter data in linear time. 
     
     Parameter
