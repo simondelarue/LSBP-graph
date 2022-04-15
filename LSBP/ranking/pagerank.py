@@ -62,7 +62,7 @@ class PageRank(BaseRanking):
             if method == 'split':
                 self.graph = split(self.filename, outdir)
             elif method == 'topk':
-                self.graph = topk(self.filename, outdir, metric='indegree')
+                self.graph = densest_subgraph(self.filename, outdir)
 
             # Cache information
             self.cache.add(self.graph)
