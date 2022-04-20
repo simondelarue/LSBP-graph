@@ -19,6 +19,7 @@ import array
 
 from LSBP.utils import Bunch
 from LSBP.data.load import sniff_delimiter, listdir_fullpath
+from LSBP.sparse.coo import coo_matrix_increm
 
 
 def densest_subgraph(filename: str, outdir: str, e_max: int = 100000, d_min: int = 10, alpha: int = 0.5) -> Bunch():
@@ -53,7 +54,8 @@ def densest_subgraph(filename: str, outdir: str, e_max: int = 100000, d_min: int
     label2idx_densest, idx2label_densest = {}, {}
     n_densest = 0
     in_deg_densest = np.zeros(2*size) # initialize of densest subgraph in-degrees vector
-    rows, cols, data = array.array('i'), array.array('i'), array.array('i') # use array.array instead of list for faster value appending
+    increm_coo = coo_matrix_increm()
+    """rows, cols, data = array.array('i'), array.array('i'), array.array('i') # use array.array instead of list for faster value appending"""
 
     with open(filename) as f:
 
@@ -77,48 +79,58 @@ def densest_subgraph(filename: str, outdir: str, e_max: int = 100000, d_min: int
                     idx2label[n] = dst
                     n += 1
 
+                src_idx = label2idx.get(src)
+                dst_idx = label2idx.get(dst)
+
                 # In and out degrees
-                out_deg[label2idx.get(src)] = out_deg.get(label2idx.get(src), 0) + 1
-                in_deg[label2idx.get(dst)] = in_deg.get(label2idx.get(dst), 0) + 1
+                out_deg[src_idx] = out_deg.get(src_idx, 0) + 1
+                in_deg[dst_idx] = in_deg.get(dst_idx, 0) + 1
                 
-                if label2idx.get(dst) not in out_deg:
-                    out_deg[label2idx.get(dst)] = 0
-                if label2idx.get(src) not in in_deg:
-                    in_deg[label2idx.get(src)] = 0
+                if dst_idx not in out_deg:
+                    out_deg[dst_idx] = 0
+                if src_idx not in in_deg:
+                    in_deg[src_idx] = 0
 
                 # Densest subgraph approximation: nodes are added if their in-degree (in the main graph) is above a threshold
-                if in_deg.get(label2idx.get(dst)) >= d_min and in_deg.get(label2idx.get(src)) >= d_min:
+                if in_deg.get(dst_idx) >= d_min and in_deg.get(src_idx) >= d_min:
                     
                     # Reindex nodes in densest subgraph
-                    if label2idx.get(src) not in label2idx_densest:
-                        label2idx_densest[label2idx.get(src)] = n_densest
+                    if src_idx not in label2idx_densest:
+                        label2idx_densest[src_idx] = n_densest
                         n_densest += 1
-                    if label2idx.get(dst) not in label2idx_densest:
-                        label2idx_densest[label2idx.get(dst)] = n_densest
+                    if dst_idx not in label2idx_densest:
+                        label2idx_densest[dst_idx] = n_densest
                         n_densest += 1
-                    
+
+                    dense_src_idx = label2idx_densest[src_idx]
+                    dense_dst_idx = label2idx_densest[dst_idx]
+
                     # Append values to sparse adjacency matrix
-                    rows.append(label2idx_densest.get(label2idx.get(src)))
-                    cols.append(label2idx_densest.get(label2idx.get(dst)))
-                    data.append(1)
+                    increm_coo.append(dense_src_idx, dense_dst_idx, 1)
+                    """rows.append(dense_src_idx)
+                    cols.append(dense_dst_idx)
+                    data.append(1)"""
 
                     # Keep track of in-degrees in densest subgraph
-                    in_deg_densest[label2idx_densest.get(label2idx.get(dst))] += 1
+                    in_deg_densest[dense_dst_idx] += 1
                     
                     # Pruning: if maximum number of edges in densest subgraph is reach, remove nodes with smallest in-degree. 
-                    if len(rows) >= e_max:
+                    """if len(rows) >= e_max:"""
+                    if increm_coo.nnz() >= e_max:
                         
                         # Select nodes with highest in-degree, wrt the maximum number of edges allowed.
                         index = np.argsort(-in_deg_densest) 
                         mask = np.cumsum(in_deg_densest[index]) <= alpha * e_max 
                         selected_nodes_idx = index[mask]
 
-                        # Filter sparse matrix
-                        s = max(np.max(rows), np.max(cols)) + 1
-                        A_coo = sparse.coo_matrix((data, (rows, cols)), shape=(s, s))
+                        # Build sparse matrix and filter nodes
+                        """s = max(np.max(rows), np.max(cols)) + 1
+                        A_coo = sparse.coo_matrix((data, (rows, cols)), shape=(s, s))"""
+                        A_coo = increm_coo.tocoo()
                         A_csr = A_coo.tocsr()[selected_nodes_idx][:, selected_nodes_idx] # convert to CSR for efficient slicing
-                        A_coo = A_csr.tocoo()
-                        rows, cols, data = array.array('i', A_coo.row), array.array('i', A_coo.col), array.array('i', A_coo.data)
+                        """A_coo = A_csr.tocoo()
+                        rows, cols, data = array.array('i', A_coo.row), array.array('i', A_coo.col), array.array('i', A_coo.data)"""
+                        increm_coo = coo_matrix_increm(A_csr.tocoo())
 
                         in_deg_densest = in_deg_densest[selected_nodes_idx]
                         in_deg_densest = np.pad(in_deg_densest, (0, (2*size)-len(in_deg_densest)), 'constant', constant_values=(0, 0))
@@ -129,10 +141,12 @@ def densest_subgraph(filename: str, outdir: str, e_max: int = 100000, d_min: int
                         # Reindex densest subgraph nodes
                         index = np.array(list(label2idx_densest.keys()))[selected_nodes_idx]
                         label2idx_densest = {i: idx for idx, i in enumerate(index)}
-                        n_densest = len(label2idx_densest)
+                        n_densest = len(label2idx_densest)                        
 
     for k, v in list(label2idx_densest.items()):
         idx2label_densest[v] = k
+
+    A_coo = increm_coo.tocoo()
 
     # Full graph information
     graph.nb_edges_tot = m
