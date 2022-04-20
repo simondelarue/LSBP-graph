@@ -15,6 +15,7 @@ from tqdm import tqdm
 import os
 from scipy import sparse
 import numpy as np
+import array
 
 from LSBP.utils import Bunch
 from LSBP.data.load import sniff_delimiter, listdir_fullpath
@@ -45,84 +46,160 @@ def densest_subgraph(filename: str, outdir: str, e_max: int = 100000, d_min: int
     # Graph information
     label2idx, idx2label = {}, {} # index-label 
     in_deg, out_deg = {}, {} # in and out-degree
+    idx = 0
 
     # Densest subgraph information
-    A_lil = sparse.lil_matrix()
-    label2idx_lil = {}
-    idx_lil = 0
-    in_deg_lil = np.array(e_max)
-
+    size = e_max
+    """A_lil = sparse.lil_matrix((size, size))"""
+    label2idx_densest = {}
+    idx_densest = 0
+    in_deg_densest = np.zeros(2*size)
+    #rows, cols, data = [], [], []
+    rows, cols, data = array.array('i'), array.array('i'), array.array('i')
+    e_cpt = 0
 
     outfile = os.path.join(outdir, f'{os.path.basename(outdir)}')
 
-    with open(f'{outfile}_topk', 'a') as o:
-        with open(filename) as f:
+    #with open(f'{outfile}_topk', 'a') as o:
+    with open(filename) as f:
 
-            delimiter = sniff_delimiter(filename)
+        delimiter = sniff_delimiter(filename)
 
-            for line in tqdm(f):
-        
-                vals = line.strip('\n').split(delimiter)
-                src, dst = vals[0], vals[1]
-                if src != '' and src != 'Source':
+        for line in tqdm(f):
+    
+            vals = line.strip('\n').split(delimiter)
+            src, dst = vals[0], vals[1]
+            if src != '' and src != 'Source':
 
-                    # Reindex nodes
-                    if src not in label2idx:
-                        label2idx[src] = idx
-                        idx2label[idx] = src
-                        idx += 1
-                    if dst not in label2idx:
-                        label2idx[dst] = idx
-                        idx2label[idx] = dst
-                        idx += 1
+                # Reindex nodes
+                if src not in label2idx:
+                    label2idx[src] = idx
+                    idx2label[idx] = src
+                    idx += 1
+                if dst not in label2idx:
+                    label2idx[dst] = idx
+                    idx2label[idx] = dst
+                    idx += 1
 
-                    # In and out degrees
-                    out_deg[label2idx.get(src)] = out_deg.get(label2idx.get(src), 0) + 1
-                    in_deg[label2idx.get(dst)] = in_deg.get(label2idx.get(dst), 0) + 1
+                # In and out degrees
+                out_deg[label2idx.get(src)] = out_deg.get(label2idx.get(src), 0) + 1
+                in_deg[label2idx.get(dst)] = in_deg.get(label2idx.get(dst), 0) + 1
+                
+                # TODO: optimize initialization of every existing nodes
+                if label2idx.get(dst) not in out_deg:
+                    out_deg[label2idx.get(dst)] = 0
+                if label2idx.get(src) not in in_deg:
+                    in_deg[label2idx.get(src)] = 0
+
+                # Densest subgraph approximation
+                if in_deg.get(label2idx.get(dst)) >= d_min and in_deg.get(label2idx.get(src)) >= d_min:
                     
-                    # TODO: optimize initialization of every existing nodes
-                    if label2idx.get(dst) not in out_deg:
-                        out_deg[label2idx.get(dst)] = 0
-                    if label2idx.get(src) not in in_deg:
-                        in_deg[label2idx.get(src)] = 0
+                    # Reindex nodes in densest subgraph
+                    if label2idx.get(src) not in label2idx_densest:
+                        label2idx_densest[label2idx.get(src)] = idx_densest
+                        idx_densest += 1
+                    if label2idx.get(dst) not in label2idx_densest:
+                        label2idx_densest[label2idx.get(dst)] = idx_densest
+                        idx_densest += 1
+                    
+                    # Fill adjacency matrix
+                    # V1
+                    """try:
+                        A_lil[label2idx_densest.get(label2idx.get(src)), label2idx_densest.get(label2idx.get(dst))] = 1
+                    except IndexError:
+                        print(f'\nsource: {label2idx_densest.get(label2idx.get(src))}')
+                        print(f'destination: {label2idx_densest.get(label2idx.get(dst))}')
+                        print(f'A lil shape: {A_lil.shape}\n')
+                    e_cpt += 1"""
+                    # V2
+                    rows.append(label2idx_densest.get(label2idx.get(src)))
+                    cols.append(label2idx_densest.get(label2idx.get(dst)))
+                    data.append(1)
 
-                    # Densest subgraph approximation
-                    if in_deg.get(label2idx.get(dst)) > d_min and in_deg.get(label2idx.get(src)) > d_min:
+                    # Keep track of in-degrees in densest subgraph
+                    try:
+                        in_deg_densest[label2idx_densest.get(label2idx.get(dst))] += 1
+                    except IndexError:
+                        print(f'node to insert: {label2idx_densest.get(label2idx.get(dst))}')
+                        print(f'min: {np.min(in_deg_densest)} - max: {np.max(in_deg_densest)}')
+                        raise Exception('finish')
+
+                
+                # Pruning: remove nodes with smallest in-degree. Note; in-degree is computed from original graph.
+                """if e_cpt >= e_max:"""
+                if len(rows) >= e_max:
+                #if A_lil.nnz >= e_max: --> this test takes too much time
+                    
+                    # Find which nodes to keep in densest subgraph
+                    index = np.argsort(-in_deg_densest) # index of nodes with highest in-degrees
+                    mask = np.cumsum(in_deg_densest[index]) <= alpha * e_max # True for all highest in-degrees nodes, wrt to max number of edges
+                    selected_nodes_idx = index[mask] 
+
+                    # Filter sparse matrix
+                    s = max(np.max(rows), np.max(cols)) + 1
+                    A_coo = sparse.coo_matrix((data, (rows, cols)), shape=(s, s))
+
+                    # Filter matrix while keeping source nodes in densest subgraph
+                    #sources = A_coo.tolil().T[selected_nodes_idx].rows
+                    #res = set(selected_nodes_idx)
+                    #for source in sources:
+                    #   res |= set(source)
+                    #res = np.array(list(res))
+
+                    # filter nodes with highest indegrees
+                    try:
+                        A_csr = A_coo.tocsr()[selected_nodes_idx][:, selected_nodes_idx]
+                    except IndexError:
+                        print(f'Selected nodes idx: {np.max(selected_nodes_idx)} - {len(selected_nodes_idx)}')
+                        print(f'Adj shape: {A_coo.shape}')
+
+                    """try:
+                        A_csr = A_lil.tocsr()
+                        A_csr = A_csr[selected_nodes_idx][:, selected_nodes_idx]
+                        A_csr.resize((size, size))
+                        e_cpt = A_csr.nnz
+                    except Exception:
+                        print('error')
                         
-                        # Reindex nodes from 0 to |V(subgraph)| - 1
-                        if dst not in label2idx_lil:
-                            label2idx_lil[dst] = idx_lil
-                            idx_lil += 1
-                        if src not in label2idx_lil:
-                            label2idx_lil[src] = idx_lil
-                            idx_lil += 1
-                        
-                        # Fill adjacency list
-                        A_lil[label2idx_lil.get(src), label2idx_lil.get(dst)] = 1
+                    A_lil = A_csr.tolil()"""
 
-                        # Keep track of in-degrees in densest subgraph
-                        in_deg_lil[label2idx_lil.get(dst)] += 1
+                    A_coo = A_csr.tocoo()
+                    #rows, cols, data = list(A_coo.row), list(A_coo.col), list(A_coo.data)
+                    rows, cols, data = array.array('i', A_coo.row), array.array('i', A_coo.col), array.array('i', A_coo.data)
 
-                    # Pruning: remove nodes with smallest in-degree
-                    # Note: in-degree is computed from original graph
-                    if A_lil.nnz == e_max:
+                    in_deg_densest = in_deg_densest[selected_nodes_idx]
+                    # Pad in degrees in dense subgraph with 0 on right side
+                    in_deg_densest = np.pad(in_deg_densest, (0, (2*size)-len(in_deg_densest)), 'constant', constant_values=(0, 0))
+                    d_min = max(d_min, in_deg_densest[-1])
+                    
+                    # Reindex densest subgraph nodes
+                    index = np.array(list(label2idx_densest.keys()))[selected_nodes_idx]
+                    label2idx_densest = {i: idx for idx, i in enumerate(index)}
+                    idx_densest = len(label2idx_densest)
 
-                        #A_csr = A_lil.tocsr() # is it necessary to convert to csr format ?
-                        index = np.argsort(-in_deg_lil) # index of nodes with highest in-degrees
-                        mask = np.cumsum(in_deg_lil[index]) <= alpha * e_max # mask on nodes with highest in-degrees, wrt max number of edges
-                        A_lil = A_lil[mask][:, mask] # filter adjacency list
+    
+    """A_coo = sparse.coo_matrix((data, (rows, cols)))
+    size = np.max(A_coo.shape)
+    A_coo.resize(size, size)"""
 
-
+    idx2label_lil = {}
+    for k, v in list(label2idx_densest.items()):
+        idx2label_lil[v] = k
 
     graph.nb_edges = idx # True number of nodes in total graph
-    graph.nb_nodes = len(label2idx)
+    graph.nb_nodes = len(in_deg_densest[:A_coo.shape[1]])
+    """graph.nb_nodes = len(in_deg_densest[:A_lil.shape[1]])"""
     graph.in_degrees = in_deg
     graph.out_degrees = out_deg
     graph.label2idx = label2idx
     graph.idx2label = idx2label
+    graph.idx2label_lil = idx2label_lil
     graph.files = listdir_fullpath(outdir)  
     graph.outdir = outdir
 
+    graph.adjacency = A_coo
+    """graph.adjacency = A_lil"""
+    
     return graph
 
 
