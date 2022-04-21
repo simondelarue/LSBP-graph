@@ -73,7 +73,7 @@ class PageRank(BaseRanking):
             print('=========LOADING==========')
             start = time.time()
             self.graph = self.cache.load()
-            print(f'Elapsed time: {time.time()-start}')
+            print(f'Elapsed time: {time.time()-start}\n')
 
 
     def fit(self, filename: str, use_cache: bool = True, method: str = 'split'):
@@ -131,11 +131,15 @@ class PageRank(BaseRanking):
 
         elif method == 'topk':
             
-            f = os.path.join(self.graph.outdir, self.graph.files[0])
-            adjacency = from_edge_list(f, n_row)
+            #f = os.path.join(self.graph.outdir, self.graph.files[0])
+            #adjacency = from_edge_list(f, n_row)
+            
+            # get adjacency directly from topk filter
+            adjacency = self.graph.adjacency
 
             # Inverse degree matrix (COO matrix)
-            out_degrees = np.array(list(dict(sorted(self.graph.out_degrees.items(), key=lambda x: x[0], reverse=False)).values()))
+            #out_degrees = np.array(list(dict(sorted(self.graph.out_degrees.items(), key=lambda x: x[0], reverse=False)).values()))
+            out_degrees = adjacency.dot(np.ones(adjacency.shape[1]))
             diag: sparse.coo_matrix = sparse.diags(out_degrees, format='coo')
             diag.data = 1 / diag.data
             
@@ -157,67 +161,3 @@ class PageRank(BaseRanking):
         scores_ /= scores_.sum()
         
         return scores_
-
-
-    """
-    def _preprocess_old(self, filename: str, use_cache: bool = True):
-        ''' If cache is empty, preprocesses data in parallel. If preprocessed data is already cached,
-            load information. 
-            
-        Parameters
-        ----------
-            filename: str
-                Name of data file containing list of edges.
-            use_cache: bool (default=True)
-                If True, use cached data if it exists. '''
-
-        self.filename = filename
-        self.cache = Cache(self.filename, use_cache=use_cache)
-        
-        if self.cache.is_empty:           
-
-            prefix = os.path.basename(filename).split('.')[0]
-            outdir = os.path.join('.', 'preproc_data', prefix)
-
-            # Split data into chunks
-            graph = split(self.filename, outdir)
-
-            # Count neighbors (parallel computing)
-            self.graph.files = listdir_fullpath(self.graph.outdir)
-            
-            with Pool() as p:
-                tuples = p.map(count_degree, self.graph.files)
-
-            self.graph.nb_edges = np.sum(x[2] for x in tuples)
-
-            in_degrees = dict(functools.reduce(
-                                operator.add, 
-                                map(collections.Counter, [x[0] for x in tuples])
-                                ))
-            out_degrees = dict(functools.reduce(
-                                operator.add, 
-                                map(collections.Counter, [x[1] for x in tuples])
-                                ))
-
-            self.graph.nodes = np.array(list(set(in_degrees.keys()).union(set(out_degrees.keys()))))
-            self.graph.nb_nodes = len(self.graph.nodes)
-
-            # Reindex
-            self.graph.label2idx = {}
-            self.graph.idx2label = {}
-            self.graph.in_degrees = {}
-            self.graph.out_degrees = {}
-
-            for idx, k in enumerate(self.graph.nodes):
-                self.graph.label2idx[k] = idx
-                self.graph.idx2label[idx] = k
-                self.graph.in_degrees[idx] = in_degrees.get(k, 0)
-                self.graph.out_degrees[idx] = out_degrees.get(k, 0)
-
-            # Cache information
-            self.cache.add(self.graph)
- 
-        else:
-            # Load information from cache
-            self.graph = self.cache.load()
-    """
