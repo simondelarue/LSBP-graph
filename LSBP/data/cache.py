@@ -9,6 +9,7 @@ Created on April 2021
 import os
 import shutil
 import numpy as np
+from scipy import sparse
 
 from LSBP.data.load import get_project_root, json2dict, dict2json
 from LSBP.utils import Bunch
@@ -45,6 +46,8 @@ class Cache:
         #np.save(os.path.join(self.directory, 'nodes.npy'), graph.nodes)
         dict2json(graph.label2idx, os.path.join(self.directory, 'label2idx.json'))
         dict2json(graph.idx2label, os.path.join(self.directory, 'idx2label.json'))
+        dict2json(graph.idx2label_densest, os.path.join(self.directory, 'idx2label_densest.json'))
+        sparse.save_npz(os.path.join(self.directory, 'adjacency.npz'), graph.adjacency)
 
         stats = {'nb_nodes': graph.nb_nodes, 'nb_edges': graph.nb_edges}
         dict2json(stats, os.path.join(self.directory, 'stats.json'))
@@ -66,6 +69,9 @@ class Cache:
         graph.in_degrees = json2dict(os.path.join(self.directory, 'in_degrees.json'), keys_int=True)
         graph.out_degrees = json2dict(os.path.join(self.directory, 'out_degrees.json'), keys_int=True)
         #graph.nodes = np.load(os.path.join(self.directory, 'nodes.npy'))
+        graph.idx2label_densest = json2dict(os.path.join(self.directory, 'idx2label_densest.json'), keys_int=True)
+        graph.adjacency = sparse.load_npz(os.path.join(self.directory, 'adjacency.npz'))
+        
         stats = json2dict(os.path.join(self.directory, 'stats.json'))
         graph.nb_nodes, graph.nb_edges = stats.get('nb_nodes'), stats.get('nb_edges')
         graph.files = [f for f in os.listdir(self.directory) if os.path.basename(self.directory) in f]
