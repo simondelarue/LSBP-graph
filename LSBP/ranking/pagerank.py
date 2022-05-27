@@ -53,7 +53,7 @@ class PageRank(BaseRanking):
         self.cache = Cache(self.filename, use_cache=use_cache)
         
         if self.cache.is_empty:           
-            print('=========PREPROCESSING==========')
+            print('========= PREPROCESSING ==========')
             start = time.time()
             prefix = os.path.basename(filename).split('.')[0]
             outdir = os.path.join(get_project_root(), 'preproc_data', prefix)
@@ -70,7 +70,7 @@ class PageRank(BaseRanking):
  
         else:
             # Load information from cache
-            print('=========LOADING==========')
+            print('========= LOADING ==========')
             start = time.time()
             self.graph = self.cache.load()
             print(f'Elapsed time: {time.time()-start}\n')
@@ -133,7 +133,9 @@ class PageRank(BaseRanking):
             
             #f = os.path.join(self.graph.outdir, self.graph.files[0])
             #adjacency = from_edge_list(f, n_row)
-            
+            print('========= PageRank ==========')
+            start = time.time()
+
             # get adjacency directly from topk filter
             adjacency = self.graph.adjacency
 
@@ -148,6 +150,8 @@ class PageRank(BaseRanking):
 
             scores = self._get_pagerank(adjacency, diag, self.damping_factor, init_scores, v0)
             self.scores_ = scores
+
+            print(f'Elapsed time: {time.time()-start}\n')
 
         return self
 
