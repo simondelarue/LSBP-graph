@@ -161,7 +161,16 @@ class PageRank(BaseRanking):
 
         W = (damping_factor * diag.dot(adjacency)).T.tocoo() # TODO: reduce time of this operation
 
-        scores_ = W.dot(init_scores) + v0
-        scores_ /= scores_.sum()
+        #scores_ = W.dot(init_scores) + v0
+        #scores_ /= scores_.sum()
+
+        scores = v0
+        for i in range(10):
+            scores_ = W.dot(scores) + v0
+            scores_ /= scores_.sum()
+            if np.linalg.norm(scores - scores_, ord=1) < 1e-6:
+                break
+            else:
+                scores = scores_
         
         return scores_
