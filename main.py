@@ -5,11 +5,15 @@ import pathlib
 import time
 import pandas as pd
 from sklearn.metrics import ndcg_score
+import spacy
+import matplotlib.pyplot as plt
 
 from LSBP.ranking import PageRank
 
-from sknetwork.data import convert_edge_list
+from IPython.display import SVG, display
+from sknetwork.data import load_netset, convert_edge_list, painters
 from sknetwork.ranking import PageRank as skPageRank
+from sknetwork.visualization import svg_graph
 
 if __name__=='__main__':
     
@@ -23,7 +27,8 @@ if __name__=='__main__':
 
     #filename = f'{DATA_DIR}/soc-LiveJournal1_toy_bis.txt'
     #filename = f'{DATA_DIR}/painters.txt'
-    filename = f'{DATA_DIR}/soc-LiveJournal1.txt'
+    #filename = f'{DATA_DIR}/soc-LiveJournal1.txt'
+    filename = f'{DATA_DIR}/wikivitals.txt'
 
     method = 'topk'
     # If 'split': What it does under the hood ?
@@ -32,9 +37,9 @@ if __name__=='__main__':
 
     s = time.time()
     pr = PageRank()
-    scores = pr.fit_transform(filename, use_cache=True, method=method)
+    scores = pr.fit_transform(filename, use_cache=False, method=method)
     topk_scores_idx = np.argsort(-scores)[:10]
-    #print(max(scores), min(scores))
+    print(max(scores), min(scores))
     #pr.filter_transform(filename, method='indegree')
     
     print('-------------------------------')
@@ -47,36 +52,58 @@ if __name__=='__main__':
 
     nodes_stream = []
     for idx in topk_scores_idx:
-        print(f'Node: {pr.graph.idx2label.get(pr.graph.idx2label_densest.get(idx))} - {scores[idx]}')
-        nodes_stream.append(pr.graph.idx2label.get(pr.graph.idx2label_densest.get(idx)))
+        node = pr.graph.idx2label.get(int(pr.graph.idx2label_densest.get(idx)))
+        print(f'Node: {node} - {scores[idx]} - indeg: {pr.graph.in_degrees.get(pr.graph.label2idx.get(node))}')
+        nodes_stream.append((node))
 
-    #raise Exception('end here')
+        #print(f'idx: {idx} - idx2label_densest: {pr.graph.idx2label_densest.get(idx)}')
+        #print(f'idx: {idx} - label2idx: {pr.graph.label2idx.get(pr.graph.idx2label_densest.get(idx))}')
+        #print(f'Node: {(pr.graph.idx2label_densest.get(idx))} - {scores[idx]}')
+        #nodes_stream.append((pr.graph.idx2label_densest.get(idx)))
+
+    # indexes
+    #print(f'label2idx: {pr.graph.label2idx}')
+    #print(f'idx2label: {pr.graph.idx2label}')
+    
+
+    print(f'Densest subgraph adj; {pr.graph.adjacency.shape}')
+    image = svg_graph(pr.graph.adjacency.tocsr(), names=[pr.graph.idx2label.get(idx) for idx in np.arange(pr.graph.adjacency.shape[0])])
+    #plt.imshow(SVG(image))
+    #raise Exception('end')
 
     print('\n-------------------------------')
     print('Sknetwork')
     print('-------------------------------')
     print('Preprocessing...')
     start = time.time()
-    filename = '/Users/simondelarue/Documents/PhD/Research/LSBP-graph/data/soc-LiveJournal1.txt'
-    df = pd.read_csv(filename, delimiter='\t', names=['src', 'dst'], skiprows=1)
-    edge_list = list(df.itertuples(index=False))
-    graph = convert_edge_list(edge_list, directed=True)
-    print(f'Completed in {(time.time()-start):.4f}s')
+    if 'LiveJournal1' in filename:
+        filename = '/Users/simondelarue/Documents/PhD/Research/LSBP-graph/data/soc-LiveJournal1.txt'
+        df = pd.read_csv(filename, delimiter='\t', names=['src', 'dst'], skiprows=1)
+        edge_list = list(df.itertuples(index=False))
+        graph = convert_edge_list(edge_list, directed=True)
+    elif 'wikivitals' in filename:
+        graph = load_netset('wikivitals')
+    elif 'painters' in filename:
+        graph = painters(metadata=True)
 
+    print(f'Completed in {(time.time()-start):.4f}s')
     print('PageRank...')
     start = time.time()
-    pr = skPageRank()
-    scores_pr = pr.fit_transform(graph.adjacency)
+    sk_pr = skPageRank()
+    scores_pr = sk_pr.fit_transform(graph.adjacency)
     print(f'Completed in {(time.time()-start):.4f}s')
     print(f'Number of nodes: {graph.adjacency.shape[0]} - Number of edges: {graph.adjacency.nnz}')
     
+    indegs_sk = graph.adjacency.T.dot(np.ones(graph.adjacency.shape[0]))
     for s, n in zip(scores_pr[np.argsort(-scores_pr)[:10]], np.argsort(-scores_pr)[:10]):
-        print(f'Node: {n} - score: {s}')
+        print(f'Node: {n} - score: {s} - indeg: {int(indegs_sk[n])}')
 
     sk_top10 = set(np.argsort(-scores_pr)[:10])
     stream_top10 = set([int(i) for i in nodes_stream])
     print(sk_top10)
     print(stream_top10)
+
+
     print('-------------------------------')
     print('Metrics')
     print('-------------------------------')
@@ -85,12 +112,18 @@ if __name__=='__main__':
     # Compute accuracy on top-k nodes
     ks = [10, 100, 1000]
     pred_rnks = np.argsort(-scores)
+    
     for k in ks:
+
+        # sknetwork
         sk_topk = set(np.argsort(-scores_pr)[:k])
+
+        # stream
         topk_scores_idx = np.argsort(-scores)[:k]
         nodes_stream = []
         for idx in topk_scores_idx:
-            nodes_stream.append(pr.graph.idx2label.get(pr.graph.idx2label_densest.get(idx)))
+            node_i = pr.graph.idx2label.get(int(pr.graph.idx2label_densest.get(idx)))
+            nodes_stream.append(node_i)
         stream_topk = set([int(i) for i in nodes_stream])
         print(f'Common ratio for {k} nodes: ', len(sk_topk.intersection(stream_topk))/k)
 
