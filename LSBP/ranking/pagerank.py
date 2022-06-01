@@ -165,7 +165,7 @@ class PageRank(BaseRanking):
         #scores_ /= scores_.sum()
 
         scores = v0
-        for i in range(10):
+        for i in range(1):
             scores_ = W.dot(scores) + v0
             scores_ /= scores_.sum()
             if np.linalg.norm(scores - scores_, ord=1) < 1e-6:
