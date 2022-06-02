@@ -22,7 +22,7 @@ from LSBP.data.load import sniff_delimiter, listdir_fullpath
 from LSBP.sparse.coo import coo_matrix_increm
 
 
-def densest_subgraph(filename: str, outdir: str, e_max: int = 100000, d_min: int = 10, alpha: int = 0.5) -> Bunch():
+def densest_subgraph(filename: str, outdir: str, e_max: int = 200000, d_min: int = 10, alpha: int = 0.5) -> Bunch():
     ''' Computes a one-pass densest subgraph approximation given a stream of edges.
     
     Parameters
@@ -144,7 +144,7 @@ def densest_subgraph(filename: str, outdir: str, e_max: int = 100000, d_min: int
                         n_densest = len(label2idx_densest)                        
 
     for k, v in list(label2idx_densest.items()):
-        idx2label_densest[v] = k
+        idx2label_densest[v] = str(k)
 
     A_coo = increm_coo.tocoo()
 
